@@ -3,10 +3,17 @@ pragma solidity ^0.8.0;
 
 import "./IERC721.sol";
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/contracts/utils/Strings.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/contracts/utils/math/SafeMath.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/contracts/utils/Context.sol";
 
 
-contract ERC721{
+contract ERC721 is Context{
     using Strings for uint256;
+    using SafeMath for uint256;
+
+    event Transfer(address from, address to, uint tokenId);
+    event Approval(address owner, bool approved, uint tokenId);
+    event ApprovalForAll(address owner, address operator, bool approved);
 
     string public name;
     string public symbol;
@@ -20,7 +27,7 @@ contract ERC721{
     constructor(string memory _name, string memory _symbol){
         name = _name;
         symbol = _symbol;
-        ownerofcontract = msg.sender;
+        ownerofcontract = super._msgSender();
     }
 
     function balanceOf(address _owner) external view returns(uint){
@@ -31,9 +38,8 @@ contract ERC721{
 
     function ownerOf(uint _id) external view returns (address){
         //return the address of the tokenID
-        address owner = owners[_id];
-        require(owner != address(0));
-        return owner;
+        require(owners[_id] != address(0), "Token ID does not exist");
+        return owners[_id];
     }
 
     function isApprovedForAll(address owner, address operator)  public view returns(bool){
@@ -43,8 +49,8 @@ contract ERC721{
 
     function setApprovalForAll(address operator, bool _approved) external {
         //set the approval for an address
-        require(operator != msg.sender, "The operator is owner");
-        operatorApprovals[msg.sender][operator] = _approved;
+        require(operator != super._msgSender(), "The operator is owner");
+        operatorApprovals[super._msgSender()][operator] = _approved;
     }
 
     function getApproved(uint tokenId) external view returns(address) {
@@ -58,27 +64,45 @@ contract ERC721{
         require(from != address(0) , "from address DNE");
         require(to != address(0), "To address DNE");
         require(owners[tokenId] == from, "from is not the owner of this token");
-        if(owners[tokenId] == from || isApprovedForAll(msg.sender, from) == true){
-            owners[tokenId] = to;
+        if(super._msgSender() != from){
+            if(tokenApprovals[tokenId] == super._msgSender()){
+                owners[tokenId] = to;
+                return true;
+            }
+            return false;
         }
+        owners[tokenId] = to;
+
+        emit Transfer(from, to, tokenId);
         return true;
     }
 
     function approve(address to, uint tokenId) public {
         //approves another owner to be spend the token on behalf of the owner
-        require(msg.sender == owners[tokenId], "msg.sender do not own the token");
+        require(super._msgSender() == owners[tokenId] || tokenApprovals[tokenId] == super._msgSender(), "msg.sender do not own the token");
         require(to != address(0), "Invalid address");
-        require(owners[tokenId]  == msg.sender, "Token ID does not exist");
-        operatorApprovals[msg.sender][to] = true;
+        require(owners[tokenId]  != address(0), "Token ID does not exist");
+        operatorApprovals[super._msgSender()][to] = true;
         tokenApprovals[tokenId] = to;
     }
 
-    function safeTransferFrom(address from, address to, uint tokenId) external {
+    function safeTransferFrom(address from, address to, uint tokenId) external returns (bool){
         //
         require(from != address(0), "Invalid address");
         require(to != address(0), "Invalid address");
-        require(owners[tokenId] == from, "Token Id does not exist");
+        require(owners[tokenId] == from && owners[tokenId] != address(0), "Token Id does not exist");
+
+        if(super._msgSender() != from){
+            if(tokenApprovals[tokenId] == super._msgSender()){
+                owners[tokenId] = to;
+                return true;
+            }
+            else return false;
+        }
         transferFrom(from,to, tokenId);
+
+        emit Transfer(from, to, tokenId);
+        return true;
     }
 
     function _baseURI(uint tokenId) internal view returns(string memory){
